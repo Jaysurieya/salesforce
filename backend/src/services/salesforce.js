@@ -1,5 +1,7 @@
 import dotenv from 'dotenv';
 
+import { sendContactCreatedEmail } from "./emailService.js";
+
 dotenv.config();
 
 class SalesforceService {
@@ -120,23 +122,35 @@ class SalesforceService {
    * @param {Object} fields - Field values to set
    * @returns {Promise<Object>} - { id, success }
    */
-  async createRecord(objectName, fields) {
-    const headers = await this._headers();
-    const url = `${this.instanceUrl}/services/data/${this.apiVersion}/sobjects/${objectName}`;
+ async createRecord(objectName, fields) {
+  const headers = await this._headers();
+  const url = `${this.instanceUrl}/services/data/${this.apiVersion}/sobjects/${objectName}`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(fields),
-    });
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(fields),
+  });
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(`Failed to create ${objectName}: ${JSON.stringify(err)}`);
-    }
-
-    return response.json(); // { id, success, errors }
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: response.statusText }));
+    throw new Error(`Failed to create ${objectName}: ${JSON.stringify(err)}`);
   }
+
+  const result = await response.json();
+
+  console.log(`✅ ${objectName} created with ID: ${result.id}`);
+
+  // 🚀 Send email only when a Contact is created
+  if  ((objectName === "Contact" || objectName === "Lead") && fields.Email) {
+    await sendContactCreatedEmail(
+      fields.FirstName || fields.LastName || "User",
+      fields.Email
+    );
+  }
+
+  return result;
+}
 
   /**
    * Update an existing record.
