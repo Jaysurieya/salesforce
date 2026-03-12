@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 /* ── Simple inline markdown renderer ──────────────────────────── */
 function renderMarkdown(text) {
@@ -101,7 +101,11 @@ function App() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [connStatus, setConnStatus] = useState('checking');
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
   const messagesEndRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const voiceErrorTimerRef = useRef(null);
 
   /* Auto-scroll */
   useEffect(() => {
@@ -126,10 +130,88 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSendMessage = async (e, directText = null) => {
+  /* ── Speech Recognition setup ──────────────────────────────── */
+  const speechSupported = typeof window !== 'undefined' &&
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  // We use a ref-based callback so the recognition onresult always has access
+  // to the latest handleSendMessage without re-creating the recognition instance.
+  const handleSendRef = useRef(null);
+
+  useEffect(() => {
+    if (!speechSupported) return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript.trim() && handleSendRef.current) {
+        handleSendRef.current(null, transcript.trim());
+      }
+    };
+
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      const errorMessages = {
+        'not-allowed': '🎤 Microphone access denied. Please allow microphone permission.',
+        'no-speech': '🔇 No speech detected. Please try again.',
+        'audio-capture': '🎤 No microphone found. Please connect a microphone.',
+        'network': '🌐 Network error. Please check your connection.',
+        'aborted': '',  // user-initiated, no error needed
+      };
+      const msg = errorMessages[event.error] || `⚠️ Speech recognition error: ${event.error}`;
+      if (msg) {
+        setVoiceError(msg);
+        clearTimeout(voiceErrorTimerRef.current);
+        voiceErrorTimerRef.current = setTimeout(() => setVoiceError(''), 4000);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.abort();
+      clearTimeout(voiceErrorTimerRef.current);
+    };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      setVoiceError('');
+      clearTimeout(voiceErrorTimerRef.current);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        // Already started — ignore
+        console.warn('Speech recognition start error:', err);
+      }
+    }
+  }, [isListening]);
+
+  const handleSendMessage = useCallback(async (e, directText = null) => {
     if (e) e.preventDefault();
     const textToSend = directText !== null ? directText : inputValue;
     if (!textToSend.trim()) return;
+
+    // Stop listening if voice was used
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
 
     const userMessage = {
       id: messages.length + 1,
@@ -179,7 +261,12 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [inputValue, messages, isListening]);
+
+  // Keep the ref in sync so the speech recognition callback always uses the latest version
+  useEffect(() => {
+    handleSendRef.current = handleSendMessage;
+  }, [handleSendMessage]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -319,13 +406,45 @@ function App() {
         <form className="max-w-3xl mx-auto flex gap-3 relative" onSubmit={handleSendMessage}>
           <input
             type="text"
-            className="flex-1 bg-gray-50 border border-gray-200 rounded-full pl-6 pr-14 py-3.5 text-gray-800 text-[15px] outline-none transition-all placeholder:text-gray-400 focus:border-[#0176D3] focus:bg-white focus:ring-[3px] focus:ring-[#0176D3]/15 disabled:opacity-50 disabled:bg-gray-100"
+            className={`flex-1 bg-gray-50 border border-gray-200 rounded-full pl-6 ${speechSupported ? 'pr-24' : 'pr-14'} py-3.5 text-gray-800 text-[15px] outline-none transition-all placeholder:text-gray-400 focus:border-[#0176D3] focus:bg-white focus:ring-[3px] focus:ring-[#0176D3]/15 disabled:opacity-50 disabled:bg-gray-100`}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about Salesforce data…"
+            placeholder={isListening ? 'Listening…' : 'Ask about Salesforce data…'}
             disabled={isLoading}
           />
+
+          {/* Microphone Button */}
+          {speechSupported && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`absolute right-12 top-[6px] bottom-[6px] aspect-square rounded-full flex items-center justify-center transition-all ${
+                isListening
+                  ? 'bg-red-500 text-white shadow-[0_2px_8px_rgba(239,68,68,0.4)] animate-[micPulse_1.5s_ease-in-out_infinite] hover:bg-red-600'
+                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
+              } disabled:opacity-40 disabled:cursor-not-allowed`}
+              disabled={isLoading}
+              title={isListening ? 'Stop listening' : 'Start voice input'}
+            >
+              {isListening ? (
+                /* Stop icon */
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                /* Microphone icon */
+                <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              )}
+            </button>
+          )}
+
+          {/* Send Button */}
           <button
             type="submit"
             className="absolute right-2 top-[6px] bottom-[6px] aspect-square rounded-full bg-[#0176D3] text-white flex items-center justify-center transition-all hover:bg-[#014486] shadow-[0_2px_8px_rgba(1,118,211,0.3)] hover:shadow-[0_4px_12px_rgba(1,118,211,0.4)] disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none hover:not-disabled:scale-[1.03] active:not-disabled:scale-95 group"
@@ -336,6 +455,24 @@ function App() {
             </svg>
           </button>
         </form>
+
+        {/* Voice Error Toast */}
+        {voiceError && (
+          <div className="max-w-3xl mx-auto mt-2 animate-[slideUp_0.3s_ease-out]">
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-700">
+              <span className="flex-1">{voiceError}</span>
+              <button
+                type="button"
+                onClick={() => setVoiceError('')}
+                className="text-red-400 hover:text-red-600 transition-colors shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
         <div className="text-center mt-2.5">
           <span className="text-[11px] text-gray-400 font-medium tracking-wide">Salesforce AI Assistant can make mistakes. Verify important information.</span>
         </div>
