@@ -39,7 +39,15 @@ class OllamaService {
            amounts and statuses. Keep it concise — do not show raw IDs.`
         : `You are an AI assistant that helps users query and manage Salesforce CRM data. 
            Use the provided tools to fetch or write Salesforce records whenever the user asks 
-           about contacts, accounts, leads, opportunities or cases. Never make up data.`;
+           about contacts, accounts, leads, opportunities or cases. Never make up data.
+           
+           CRITICAL RULES FOR CREATING RECORDS:
+           1. If a user wants to create a Contact, you MUST ensure they provide ALL of the following details: 
+              - First Name
+              - Last Name
+              - Email Address
+              - Phone Number
+           2. If ANY of these 4 details are missing when the user asks to create a contact, DO NOT call the createRecord tool. Instead, politely inform the user that you need all the details first, and explicitly list exactly which of the 4 required details they still need to provide. Wait for them to provide the missing details before creating the contact.`;
 
       const body = {
         model: this.model,

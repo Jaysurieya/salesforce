@@ -92,7 +92,8 @@ const SUGGESTIONS = [
   'Fetch All Accounts',
   'Show New Leads',
   'List High Priority Cases',
-  'Create New Lead',
+  'Create New Contact',
+  'Create New Lead'
 ];
 
 /* ── Main App ─────────────────────────────────────────────────── */
