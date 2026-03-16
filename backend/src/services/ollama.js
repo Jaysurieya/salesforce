@@ -29,9 +29,15 @@ class OllamaService {
    * @param {Array}   messages     - [{role, content}]
    * @param {boolean} forceSummary - If true, omit tools so the model returns plain English
    */
-  async generateResponse(messages, forceSummary = false) {
+  async generateResponse(messages, forceSummary = false, customModel = null) {
     try {
       const tools = this.toolRegistry.getToolDefinitions();
+      
+      // If a custom model is passed from the frontend, use it. Otherwise use process.env default.
+      let modelToUse = customModel || this.model;
+      if (!modelToUse || modelToUse === 'default') {
+        modelToUse = 'gpt-oss:120b-cloud';
+      }
 
       const systemPrompt = forceSummary
         ? `You are a Salesforce assistant. Summarise the Salesforce data given to you in clear, 
@@ -50,7 +56,7 @@ class OllamaService {
            2. If ANY of these 4 details are missing when the user asks to create a contact, DO NOT call the createRecord tool. Instead, politely inform the user that you need all the details first, and explicitly list exactly which of the 4 required details they still need to provide. Wait for them to provide the missing details before creating the contact.`;
 
       const body = {
-        model: this.model,
+        model: modelToUse,
         stream: false,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -64,7 +70,7 @@ class OllamaService {
       }
 
       const url = `${this.host}/api/chat`;
-      console.log(`📡 POST ${url} → model: ${this.model}`);
+      console.log(`📡 POST ${url} → model: ${modelToUse}`);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -85,6 +91,11 @@ class OllamaService {
           errMsg = errBody || response.statusText;
         }
         console.error(`❌ Ollama API [${response.status}]:`, errMsg);
+
+        if (response.status === 404 && errMsg.toLowerCase().includes('not found')) {
+          throw new Error('Requested model is not available on the configured cloud AI provider.');
+        }
+
         throw new Error(`Ollama API error [${response.status}]: ${errMsg}`);
       }
 
@@ -122,7 +133,7 @@ class OllamaService {
   /**
    * Execute the tool the LLM chose, then ask the LLM to summarise the result.
    */
-  async executeToolAndGetResponse(toolCall, messages) {
+  async executeToolAndGetResponse(toolCall, messages, customModel = null) {
     try {
       const result = await this.toolRegistry.executeTool(toolCall.tool, toolCall.params);
       const count = Array.isArray(result) ? result.length : 1;
@@ -139,7 +150,8 @@ class OllamaService {
         }
       ];
 
-      const summary = await this.generateResponse(summaryMessages, true);
+      // Pass the customModel down to the generateResponse call for the summary
+      const summary = await this.generateResponse(summaryMessages, true, customModel);
       return summary.text;
     } catch (error) {
       console.error('Tool execution error:', error.message);

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import chatRoutes from './routes/chat.js';
 import SalesforceService from './services/salesforce.js';
 
@@ -8,6 +9,11 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/salesforce-chat';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log(`\n🍃 Connected to MongoDB at ${MONGODB_URI}`))
+  .catch(err => console.error('\n❌ MongoDB connection error:', err));
 
 // Middleware
 app.use(cors());
