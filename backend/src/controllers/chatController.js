@@ -1,10 +1,9 @@
 import OllamaService from '../services/ollama.js';
 import SalesforceService from '../services/salesforce.js';
-import Chat from '../models/Chat.js';
 
 export const sendMessage = async (req, res) => {
   try {
-    const { message, conversationHistory = [], model } = req.body;
+    const { message, conversationHistory = [] } = req.body;
 
     if (!message || message.trim() === '') {
       return res.status(400).json({ error: 'Message is required' });
@@ -16,11 +15,12 @@ export const sendMessage = async (req, res) => {
       content: msg.text
     }));
 
+    // Add current user message
     const userMessage = { role: 'user', content: message };
     const messagesWithCurrent = [...formattedMessages, userMessage];
 
     // Get initial response from Ollama (may include tool call)
-    const ollamaResponse = await OllamaService.generateResponse(messagesWithCurrent, false, model);
+    const ollamaResponse = await OllamaService.generateResponse(messagesWithCurrent);
 
     let finalText;
     let toolExecuted = null;
@@ -31,8 +31,7 @@ export const sendMessage = async (req, res) => {
 
       finalText = await OllamaService.executeToolAndGetResponse(
         ollamaResponse.toolCall,
-        messagesWithCurrent,
-        model
+        messagesWithCurrent
       );
     } else {
       finalText = ollamaResponse.text;
@@ -53,13 +52,6 @@ export const sendMessage = async (req, res) => {
       return res.status(503).json({
         error: 'AI service unavailable',
         message: 'Unable to connect to the Cloud LLM. Please check your API key and Base URL.'
-      });
-    }
-
-    if (error.message === 'Requested model is not available on the configured cloud AI provider.') {
-      return res.status(404).json({
-        error: 'Model Not Found',
-        message: error.message
       });
     }
 
@@ -112,79 +104,4 @@ export const getStatus = async (req, res) => {
   });
 };
 
-export const createChat = async (req, res) => {
-  try {
-    const { title } = req.body;
-    // auto fallback to "New Chat" handled by schema if not provided
-    const newChat = new Chat({ title: title || 'New Chat' });
-    const savedChat = await newChat.save();
-    res.status(201).json(savedChat);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create chat', message: error.message });
-  }
-};
-
-export const getChats = async (req, res) => {
-  try {
-    const chats = await Chat.find().sort({ updatedAt: -1 }).select('-messages');
-    res.json(chats);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch chats', message: error.message });
-  }
-};
-
-export const getChatById = async (req, res) => {
-  try {
-    const chat = await Chat.findById(req.params.id);
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    res.json(chat);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch chat', message: error.message });
-  }
-};
-
-export const addMessage = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { messages } = req.body; // Array of messages to append
-    
-    const chat = await Chat.findById(id);
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-
-    chat.messages.push(...messages);
-    
-    // Auto-generate title if it's the first set of messages
-    if (chat.title === 'New Chat' && messages.some(m => m.role === 'user')) {
-      const firstUserMsg = messages.find(m => m.role === 'user').content;
-      chat.title = firstUserMsg.slice(0, 30) + (firstUserMsg.length > 30 ? '...' : '');
-    }
-
-    const updatedChat = await chat.save();
-    res.json(updatedChat);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to add message', message: error.message });
-  }
-};
-
-export const deleteChat = async (req, res) => {
-  try {
-    const chat = await Chat.findByIdAndDelete(req.params.id);
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    res.json({ message: 'Chat deleted' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete chat', message: error.message });
-  }
-};
-
-export const renameChat = async (req, res) => {
-  try {
-    const { title } = req.body;
-    const chat = await Chat.findByIdAndUpdate(req.params.id, { title }, { new: true });
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    res.json(chat);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to rename chat', message: error.message });
-  }
-};
-
-export default { sendMessage, getStatus, createChat, getChats, getChatById, addMessage, deleteChat, renameChat };
+export default { sendMessage, getStatus };
