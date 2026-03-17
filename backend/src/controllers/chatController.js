@@ -27,12 +27,21 @@ export const sendMessage = async (req, res) => {
 
     if (ollamaResponse.toolCall) {
       console.log('🔧 Tool call detected:', ollamaResponse.toolCall);
-      toolExecuted = ollamaResponse.toolCall.tool;
+      const toolName = ollamaResponse.toolCall.tool;
 
-      finalText = await OllamaService.executeToolAndGetResponse(
-        ollamaResponse.toolCall,
-        messagesWithCurrent
-      );
+      // Role check for Write tools
+      const isWriteTool = ['createRecord', 'updateRecord'].includes(toolName);
+      if (isWriteTool && req.user.role !== 'admin') {
+        console.warn(`⛔ Blocked ${toolName} for role: ${req.user.role}`);
+        finalText = "I'm sorry, but you don't have permission to create or update records. Only Administrators can do that.";
+        toolExecuted = `${toolName} (Blocked)`;
+      } else {
+        toolExecuted = toolName;
+        finalText = await OllamaService.executeToolAndGetResponse(
+          ollamaResponse.toolCall,
+          messagesWithCurrent
+        );
+      }
     } else {
       finalText = ollamaResponse.text;
     }

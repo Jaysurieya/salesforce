@@ -5,7 +5,7 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const [form, setForm]     = useState({ name: '', email: '', password: '', confirm: '' });
+  const [form, setForm]     = useState({ name: '', email: '', password: '', confirm: '', role: 'user' });
   const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -22,14 +22,17 @@ export default function RegisterPage() {
       const res  = await fetch(`${API}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
+        body: JSON.stringify({ 
+          name: form.name, 
+          email: form.email, 
+          password: form.password,
+          role: form.role || 'user'
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
 
-      localStorage.setItem('sf_token', data.token);
-      localStorage.setItem('sf_user',  JSON.stringify(data.user));
-      navigate('/');
+      navigate('/login', { state: { message: 'Account created successfully! Please sign in.' } });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -84,6 +87,18 @@ export default function RegisterPage() {
                 />
               </div>
             ))}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Account Role</label>
+              <select
+                name="role" value={form.role} onChange={handleChange}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-gray-800
+                  text-sm outline-none transition-all focus:border-[#0176D3] focus:bg-white focus:ring-3 focus:ring-[#0176D3]/15"
+              >
+                <option value="user">Standard User</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
 
             <button
               type="submit" disabled={loading}

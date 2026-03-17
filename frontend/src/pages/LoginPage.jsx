@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm]     = useState({ email: '', password: '' });
   const [error, setError]   = useState('');
   const [loading, setLoading] = useState(false);
@@ -52,6 +53,16 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-[0_24px_64px_rgba(0,0,0,0.35)] p-8">
+
+          {location.state?.message && (
+            <div className="mb-5 flex items-center gap-2.5 bg-emerald-50 border border-emerald-200
+              rounded-xl px-4 py-3 text-sm text-emerald-600 animate-[slideUp_0.3s_ease-out]">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {location.state.message}
+            </div>
+          )}
 
           {error && (
             <div className="mb-5 flex items-center gap-2.5 bg-red-50 border border-red-200

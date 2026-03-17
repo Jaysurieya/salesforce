@@ -41,15 +41,25 @@ class OllamaService {
            amounts and statuses. Keep it concise — do not show raw IDs.`
         : `You are an AI assistant that helps users query and manage Salesforce CRM data. 
            Use the provided tools to fetch or write Salesforce records whenever the user asks 
-           about contacts, accounts, leads, opportunities or cases. Never make up data.
+           about contacts, accounts, leads, opportunities or cases.
+
+           EXISTING TOOLS:
+           - getAccountRecords: Use for companies/accounts.
+           - getContactRecords: Use for people/contacts.
+           - getOpportunityRecords: Use for deals/opportunities.
+           - getLeadRecords: Use for prospects/leads.
+           - getCaseRecords: Use for support cases/tickets.
+           - createRecord: Use to add NEW records (Admin only).
+           - updateRecord: Use to modify existing records (Admin only).
+
+           CRITICAL RULES:
+           1. ONLY use the tool names listed above. NEVER invent new tool names like "showAllContacts".
+           2. To see "all" records, use the appropriate "get...Records" tool without filters.
+           3. Never make up data.
            
-           CRITICAL RULES FOR CREATING RECORDS:
-           1. If a user wants to create a Contact, you MUST ensure they provide ALL of the following details: 
-              - First Name
-              - Last Name
-              - Email Address
-              - Phone Number
-           2. If ANY of these 4 details are missing when the user asks to create a contact, DO NOT call the createRecord tool. Instead, politely inform the user that you need all the details first, and explicitly list exactly which of the 4 required details they still need to provide. Wait for them to provide the missing details before creating the contact.`;
+           CREATING CONTACTS:
+           - You MUST ensure they provide: First Name, Last Name, Email, and Phone Number.
+           - If details are missing, DO NOT call createRecord. Ask for them first.`;
 
       const body = {
         model: modelToUse,
@@ -111,6 +121,12 @@ class OllamaService {
         };
       }
 
+      // FALLBACK: Parse manual code blocks if native tools were ignored
+      const manualCall = this.parseManualToolCall(message.content || '');
+      if (manualCall) {
+        return { text: '', toolCall: manualCall };
+      }
+
       return { text: message.content || 'No response generated.', toolCall: null };
 
     } catch (error) {
@@ -147,6 +163,30 @@ class OllamaService {
       console.error('Tool execution error:', error.message);
       return `Error fetching data: ${error.message}. Please try again.`;
     }
+  }
+
+  /**
+   * FALLBACK: Detect and map manual tool calls like "showAllContacts()"
+   */
+  parseManualToolCall(content) {
+    if (!content) return null;
+
+    // Look for patterns like tool_code \n showAllContacts()
+    const patterns = [
+      /showAllContacts\(\)/i,
+      /showAllLeads\(\)/i,
+      /getAccountRecords\s*\(([^)]*)\)/i,
+      /getContactRecords\s*\(([^)]*)\)/i
+    ];
+
+    if (patterns[0].test(content)) {
+      return { tool: 'getContactRecords', params: { limit: 20 } };
+    }
+    if (patterns[1].test(content)) {
+      return { tool: 'getLeadRecords', params: { limit: 20 } };
+    }
+
+    return null;
   }
 }
 
