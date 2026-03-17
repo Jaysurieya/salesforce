@@ -28,8 +28,10 @@ class OllamaService {
    * Call the Ollama /api/chat endpoint.
    * @param {Array}   messages     - [{role, content}]
    * @param {boolean} forceSummary - If true, omit tools so the model returns plain English
+   * @param {string}  modelOverride - Optional model to use instead of the .env default
    */
-  async generateResponse(messages, forceSummary = false) {
+  async generateResponse(messages, forceSummary = false, modelOverride = null) {
+    const modelToUse = modelOverride || this.model;
     try {
       const tools = this.toolRegistry.getToolDefinitions();
 
@@ -50,7 +52,7 @@ class OllamaService {
            2. If ANY of these 4 details are missing when the user asks to create a contact, DO NOT call the createRecord tool. Instead, politely inform the user that you need all the details first, and explicitly list exactly which of the 4 required details they still need to provide. Wait for them to provide the missing details before creating the contact.`;
 
       const body = {
-        model: this.model,
+        model: modelToUse,
         stream: false,
         messages: [
           { role: 'system', content: systemPrompt },

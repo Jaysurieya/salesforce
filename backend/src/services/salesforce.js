@@ -16,10 +16,7 @@ class SalesforceService {
     this._tokenExpiry = null;
   }
 
-  /**
-   * Get a valid access token using OAuth2 client_credentials flow.
-   * Caches the token and auto-refreshes when expired.
-   */
+
   async getAccessToken() {
     const now = Date.now();
 
@@ -122,35 +119,35 @@ class SalesforceService {
    * @param {Object} fields - Field values to set
    * @returns {Promise<Object>} - { id, success }
    */
- async createRecord(objectName, fields) {
-  const headers = await this._headers();
-  const url = `${this.instanceUrl}/services/data/${this.apiVersion}/sobjects/${objectName}`;
+  async createRecord(objectName, fields) {
+    const headers = await this._headers();
+    const url = `${this.instanceUrl}/services/data/${this.apiVersion}/sobjects/${objectName}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(fields),
-  });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(fields),
+    });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(`Failed to create ${objectName}: ${JSON.stringify(err)}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(`Failed to create ${objectName}: ${JSON.stringify(err)}`);
+    }
+
+    const result = await response.json();
+
+    console.log(`✅ ${objectName} created with ID: ${result.id}`);
+
+    // 🚀 Send email only when a Contact is created
+    if ((objectName === "Contact" || objectName === "Lead") && fields.Email) {
+      await sendContactCreatedEmail(
+        fields.FirstName || fields.LastName || "User",
+        fields.Email
+      );
+    }
+
+    return result;
   }
-
-  const result = await response.json();
-
-  console.log(`✅ ${objectName} created with ID: ${result.id}`);
-
-  // 🚀 Send email only when a Contact is created
-  if  ((objectName === "Contact" || objectName === "Lead") && fields.Email) {
-    await sendContactCreatedEmail(
-      fields.FirstName || fields.LastName || "User",
-      fields.Email
-    );
-  }
-
-  return result;
-}
 
   /**
    * Update an existing record.

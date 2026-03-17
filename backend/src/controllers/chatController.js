@@ -3,7 +3,7 @@ import SalesforceService from '../services/salesforce.js';
 
 export const sendMessage = async (req, res) => {
   try {
-    const { message, conversationHistory = [] } = req.body;
+    const { message, conversationHistory = [], model } = req.body;
 
     if (!message || message.trim() === '') {
       return res.status(400).json({ error: 'Message is required' });
@@ -20,7 +20,7 @@ export const sendMessage = async (req, res) => {
     const messagesWithCurrent = [...formattedMessages, userMessage];
 
     // Get initial response from Ollama (may include tool call)
-    const ollamaResponse = await OllamaService.generateResponse(messagesWithCurrent);
+    const ollamaResponse = await OllamaService.generateResponse(messagesWithCurrent, false, model);
 
     let finalText;
     let toolExecuted = null;
