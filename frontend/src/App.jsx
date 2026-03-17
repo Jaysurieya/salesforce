@@ -117,7 +117,7 @@ function inline(text) {
 /* ─────────────────────────────────────────────────────────────────────────────
    SIDEBAR
 ───────────────────────────────────────────────────────────────────────────── */
-function Sidebar({ sessions, currentId, onSelect, onNew, onDelete, open, onClose }) {
+function Sidebar({ sessions, currentId, onSelect, onNew, onDelete, open, onClose, user, onLogout }) {
   const groups = groupByDay(sessions);
 
   return (
@@ -210,18 +210,30 @@ function Sidebar({ sessions, currentId, onSelect, onNew, onDelete, open, onClose
           })}
         </div>
 
-        {/* Bottom user info */}
-        <div className="px-3 py-4 border-t border-white/10">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors cursor-default">
+        {/* Bottom user info + sign out */}
+        <div className="px-3 py-4 border-t border-white/10 space-y-1">
+          <div className="flex items-center gap-3 px-2 py-2 rounded-xl">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0176D3] to-[#014486]
-              flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md">
-              SF
+              flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md select-none">
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-white/80 truncate">Salesforce User</p>
-              <p className="text-[10px] text-white/30 truncate">AI Assistant</p>
+              <p className="text-xs font-semibold text-white/85 truncate">{user?.name || 'User'}</p>
+              <p className="text-[10px] text-white/35 truncate">{user?.email || ''}</p>
             </div>
           </div>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium
+              text-white/50 hover:text-rose-400 hover:bg-white/5
+              transition-all duration-150 group"
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            </svg>
+            Sign out
+          </button>
         </div>
       </aside>
     </>
@@ -231,7 +243,7 @@ function Sidebar({ sessions, currentId, onSelect, onNew, onDelete, open, onClose
 /* ─────────────────────────────────────────────────────────────────────────────
    HEADER
 ───────────────────────────────────────────────────────────────────────────── */
-function Header({ connStatus, selectedModel, onModelChange, onSidebarToggle }) {
+function Header({ connStatus, selectedModel, onModelChange, onSidebarToggle, user, onLogout }) {
   return (
     <header className="flex items-center justify-between px-5 py-3.5 bg-white
       border-b border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.06)] shrink-0 z-10">
@@ -300,13 +312,18 @@ function Header({ connStatus, selectedModel, onModelChange, onSidebarToggle }) {
           {connStatus === 'connected' ? 'Connected' : connStatus === 'error' ? 'Offline' : 'Connecting…'}
         </div>
 
-        {/* Avatar */}
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#0176D3] to-[#014486]
-          flex items-center justify-center text-white font-bold text-xs shadow-sm cursor-default select-none">
-          SF
-        </div>
+        {/* Admin link */}
+        {user?.role === 'admin' && (
+          <a href="/admin"
+            className="text-xs font-semibold px-3 py-2 rounded-xl bg-amber-50 border border-amber-200
+              text-amber-700 hover:bg-amber-100 transition-colors">
+            🔑 Admin
+          </a>
+        )}
+
       </div>
     </header>
+
   );
 }
 
@@ -423,6 +440,14 @@ export default function App() {
   const [sessions,        setSessions]        = useState(loadSessions);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [sidebarOpen,     setSidebarOpen]     = useState(false);
+  const authUser = JSON.parse(localStorage.getItem('sf_user') || '{}');
+  const authToken = localStorage.getItem('sf_token') || '';
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('sf_token');
+    localStorage.removeItem('sf_user');
+    window.location.href = '/login';
+  }, []);
   const [isListening,     setIsListening]     = useState(false);
   const [voiceError,      setVoiceError]      = useState('');
 
@@ -564,7 +589,7 @@ export default function App() {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
       const res = await fetch(`${apiUrl}/api/chat/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
         body: JSON.stringify({ message: text, model: selectedModel, conversationHistory: messages.slice(-10) })
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || 'Failed'); }
@@ -588,14 +613,16 @@ export default function App() {
     <div className="w-full h-full flex bg-white overflow-hidden">
 
       <Sidebar
-        sessions={sessions}
-        currentId={currentSessionId}
-        onSelect={selectSession}
-        onNew={newSession}
-        onDelete={deleteSession}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+          sessions={sessions}
+          currentId={currentSessionId}
+          onSelect={selectSession}
+          onNew={newSession}
+          onDelete={deleteSession}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          user={authUser}
+          onLogout={handleLogout}
+        />
 
       {/* Right panel */}
       <div className="flex-1 flex flex-col h-full min-w-0 bg-white">
@@ -604,6 +631,8 @@ export default function App() {
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           onSidebarToggle={() => setSidebarOpen(o => !o)}
+          user={authUser}
+          onLogout={handleLogout}
         />
 
         {/* Messages / Welcome */}

@@ -1,12 +1,13 @@
 import express from 'express';
 import chatController from '../controllers/chatController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// POST /api/chat/send - Send a message to the AI
-router.post('/send', chatController.sendMessage);
+// POST /api/chat/send — auth required
+router.post('/send', authMiddleware, chatController.sendMessage);
 
-// GET /api/chat/status - Health check: LLM + Salesforce connectivity
+// GET /api/chat/status — public (used for health UI)
 router.get('/status', chatController.getStatus);
 
 export default router;

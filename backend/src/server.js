@@ -1,55 +1,72 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import chatRoutes from './routes/chat.js';
+import mongoose from 'mongoose';
+
+import chatRoutes  from './routes/chat.js';
+import authRoutes  from './routes/auth.js';
+import userRoutes  from './routes/user.js';
+import adminRoutes from './routes/admin.js';
 import SalesforceService from './services/salesforce.js';
 
 dotenv.config();
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+/* ── Middleware ─────────────────────────────────────────────── */
 app.use(cors());
 app.use(express.json());
 
-// Routes
-app.use('/api/chat', chatRoutes);
+/* ── Routes ─────────────────────────────────────────────────── */
+app.use('/api/auth',  authRoutes);
+app.use('/api/user',  userRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/chat',  chatRoutes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
-});
+/* ── Health ─────────────────────────────────────────────────── */
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-// Error handling middleware
-app.use((err, req, res, next) => {
+/* ── Error handler ──────────────────────────────────────────── */
+app.use((err, _req, res, _next) => {
   console.error('Error:', err.message);
   res.status(500).json({
     error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 });
 
-// Start server
-app.listen(PORT, async () => {
-  console.log(`\n🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🤖 Ollama: ${process.env.OLLAMA_HOST}`);
-  console.log(`📦 Model: ${process.env.OLLAMA_MODEL}`);
-  console.log(`🔗 Salesforce: ${process.env.SALESFORCE_INSTANCE_URL}`);
+/* ── Startup ────────────────────────────────────────────────── */
+async function start() {
+  /* 1. MongoDB */
+  const mongoUri = process.env.MONGO_URI;
+  if (!mongoUri) {
+    console.warn('⚠️  MONGO_URI not set in .env — database features disabled.');
+  } else {
+    try {
+      await mongoose.connect(mongoUri);
+      console.log('✅ MongoDB connected');
+    } catch (err) {
+      console.error('❌ MongoDB connection failed:', err.message);
+    }
+  }
 
-  // Verify Salesforce connectivity on startup
+  /* 2. Salesforce */
   console.log('\n🔍 Checking Salesforce connection...');
   try {
-    const connected = await SalesforceService.isConnected();
-    if (connected) {
-      console.log('✅ Salesforce connected successfully!\n');
-    } else {
-      console.warn('⚠️  Salesforce connection check returned false. Check your credentials.\n');
-    }
+    const ok = await SalesforceService.isConnected();
+    console.log(ok ? '✅ Salesforce connected\n' : '⚠️  Salesforce check returned false\n');
   } catch (err) {
-    console.error('❌ Salesforce connection failed:', err.message);
-    console.error('   Check SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET in .env\n');
+    console.error('❌ Salesforce connect failed:', err.message, '\n');
   }
-});
+
+  /* 3. Listen */
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🤖 Model: ${process.env.OLLAMA_MODEL}`);
+  });
+}
+
+start();
 
 export default app;
