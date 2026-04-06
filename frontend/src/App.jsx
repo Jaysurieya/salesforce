@@ -456,6 +456,8 @@ export default function App() {
     window.location.href = '/login';
   }, []);
   const [isListening,     setIsListening]     = useState(false);
+  const [isVoiceEnabled,  setIsVoiceEnabled]  = useState(() => localStorage.getItem('sf_voice_enabled') === 'true');
+  const [isSpeaking,      setIsSpeaking]      = useState(false);
   const [voiceError,      setVoiceError]      = useState('');
 
   const messagesEndRef   = useRef(null);
@@ -529,6 +531,40 @@ export default function App() {
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   useEffect(() => {
+    if (!isVoiceEnabled) {
+      localStorage.setItem('sf_voice_enabled', 'false');
+      window.speechSynthesis?.cancel();
+      setIsSpeaking(false);
+    } else {
+      localStorage.setItem('sf_voice_enabled', 'true');
+    }
+  }, [isVoiceEnabled]);
+
+  const speak = useCallback((text) => {
+    if (!isVoiceEnabled || !window.speechSynthesis) return;
+    
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+
+    // Create a new utterance
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = 'en-US';
+    msg.rate = 1.1;
+    msg.pitch = 1.0;
+
+    msg.onstart = () => setIsSpeaking(true);
+    msg.onend   = () => setIsSpeaking(false);
+    msg.onerror = () => setIsSpeaking(false);
+    
+    // Find a nice voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const voice = voices.find(v => (v.name.includes('Google') || v.name.includes('Natural')) && v.lang.startsWith('en')) || voices[0];
+    if (voice) msg.voice = voice;
+
+    window.speechSynthesis.speak(msg);
+  }, [isVoiceEnabled]);
+
+  useEffect(() => {
     if (!speechSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const r = new SR();
@@ -553,7 +589,7 @@ export default function App() {
     };
     r.onend = () => setIsListening(false);
     recognitionRef.current = r;
-    return () => { r.abort(); clearTimeout(voiceTimerRef.current); };
+    return () => { r.abort(); clearTimeout(voiceTimerRef.current); window.speechSynthesis?.cancel(); };
   }, []); // eslint-disable-line
 
   const toggleListening = useCallback(() => {
@@ -621,7 +657,11 @@ export default function App() {
       const data = await res.json();
       const aiMsg = { id: withUser.length + 1, text: data.data.text, sender: 'ai', toolUsed: data.data.toolUsed || null };
       const final = [...withUser, aiMsg];
-      setMessages(final); saveToSession(sid, final, selectedModel);
+      setMessages(final); 
+      saveToSession(sid, final, selectedModel);
+      
+      // Trigger voice output
+      speak(data.data.text);
     } catch (err) {
       const errMsg = { id: withUser.length + 1, text: `⚠️ ${err.message}. Please ensure the backend is running.`, sender: 'ai', toolUsed: null };
       const final = [...withUser, errMsg];
@@ -836,6 +876,41 @@ export default function App() {
                 className="flex-1 bg-transparent text-gray-800 text-[16px] py-3 outline-none
                   placeholder:text-gray-400 disabled:opacity-50"
               />
+
+              {/* Speaker Toggle / Stop Button */}
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (isSpeaking) {
+                    window.speechSynthesis.cancel();
+                    setIsSpeaking(false);
+                  } else {
+                    setIsVoiceEnabled(!isVoiceEnabled);
+                  }
+                }}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all border
+                  ${isSpeaking 
+                    ? 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse' 
+                    : isVoiceEnabled 
+                      ? 'bg-blue-50 text-blue-600 border-blue-200' 
+                      : 'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100'
+                  }`}
+                title={isSpeaking ? 'Stop Speaking' : isVoiceEnabled ? 'Disable Voice Output' : 'Enable Voice Output'}
+              >
+                {isSpeaking ? (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                ) : isVoiceEnabled ? (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 9.75L19.5 12m0 0l2.25 2.25M19.5 12l2.25-2.25M19.5 12l-2.25 2.25m-10.5-6H4.51c-.88 0-1.704.506-1.938 1.354A9.01 9.01 0 002.25 12c0 .83.112 1.633.322 2.396C2.806 15.244 3.63 15.75 4.51 15.75H6.75l4.72 4.72a.75.75 0 001.28-.53V3.06a.75.75 0 00-1.28-.53L6.75 7.25z" />
+                  </svg>
+                )}
+              </button>
 
               {/* Voice/Mic */}
               {speechSupported && (
